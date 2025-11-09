@@ -24,13 +24,6 @@ class PricingPlanBase(BaseModel):
     features: List[str] # Expecting a list of strings from scraper
     link: Optional[str] = None
 
-class PricingPlanCreate(PricingPlanBase):
-    pass
-
-class PricingPlan(PricingPlanBase):
-    id: int
-    saas_info_id: int
-
     @validator('features', pre=True, always=True)
     def parse_features(cls, v):
         if isinstance(v, str):
@@ -39,6 +32,13 @@ class PricingPlan(PricingPlanBase):
             except json.JSONDecodeError:
                 raise ValueError("features must be a valid JSON string or a list of strings")
         return v
+
+class PricingPlanCreate(PricingPlanBase):
+    pass
+
+class PricingPlan(PricingPlanBase):
+    id: int
+    saas_info_id: int
 
     class Config:
         from_attributes = True
@@ -49,6 +49,15 @@ class SaaSInfoBase(BaseModel):
     one_liner: str
     target_segments: Optional[List[str]] = None # Made optional for testing simplified scraper
 
+    @validator('target_segments', pre=True, always=True)
+    def parse_target_segments(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                raise ValueError("target_segments must be a valid JSON string or a list of strings")
+        return v
+
 class SaaSInfoCreate(SaaSInfoBase):
     features: Optional[List[FeatureCreate]] = None
     pricing: Optional[List[PricingPlanCreate]] = None
@@ -58,15 +67,6 @@ class SaaSInfo(SaaSInfoBase):
     id: int
     features: List[Feature] = []
     pricing: List[PricingPlan] = []
-
-    @validator('target_segments', pre=True, always=True)
-    def parse_target_segments(cls, v):
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                raise ValueError("target_segments must be a valid JSON string or a list of strings")
-        return v
 
     class Config:
         from_attributes = True
@@ -119,14 +119,6 @@ class LeadBase(BaseModel):
     weakness: str
     related_subreddits: List[str]
 
-class LeadCreate(LeadBase):
-    pass
-
-class Lead(LeadBase):
-    id: int
-    saas_info_id: int
-    reddit_posts: List[RedditPost] = []
-
     @validator('related_subreddits', pre=True, always=True)
     def parse_related_subreddits(cls, v):
         if isinstance(v, str):
@@ -135,6 +127,17 @@ class Lead(LeadBase):
             except json.JSONDecodeError:
                 raise ValueError("related_subreddits must be a valid JSON string or a list of strings")
         return v
+
+class LeadCreate(LeadBase):
+    pass
+
+class LeadsCreate(BaseModel):
+    leads: List[LeadCreate]
+
+class Lead(LeadBase):
+    id: int
+    saas_info_id: int
+    reddit_posts: List[RedditPost] = []
 
     class Config:
         from_attributes = True
