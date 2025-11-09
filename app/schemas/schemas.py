@@ -90,6 +90,7 @@ class RedditPostUpdate(RedditPostBase):
     generated_title: Optional[str] = None
     generated_content: Optional[str] = None
     is_posted: Optional[bool] = False
+    ai_generated: Optional[bool] = False
 
 class RedditPost(RedditPostBase):
     id: int
@@ -99,6 +100,7 @@ class RedditPost(RedditPostBase):
     generated_title: Optional[str] = None
     generated_content: Optional[str] = None
     is_posted: bool = False
+    ai_generated: bool = False
 
     class Config:
         from_attributes = True

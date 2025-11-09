@@ -1,6 +1,7 @@
 import json
 import praw
 import logging
+import time # Import time module
 from typing import List
 from sqlalchemy.orm import Session
 from scrapegraphai.graphs import DocumentScraperGraph
@@ -181,6 +182,7 @@ async def generate_reddit_posts(saas_info_id: int, post_id: int, db: Session):
     The new post should be written in a human-like, friendly, and youthful tone, suitable for Reddit. It should not sound like a generic AI.
     The post should address the core problem or topic of the original post, but from a new perspective.
     Subtly hint at a solution related to the '{saas_info_db.name}' SaaS product without being an obvious advertisement.
+    Crucially, the generated post must be engaging, thought-provoking, and blend seamlessly with typical Reddit discussions to avoid being flagged by spam filters. Avoid overly promotional language, direct calls to action, or repetitive phrasing. Focus on genuine discussion and value.
     The output MUST strictly conform to the JSON schema for a GeneratedPostContent object.
     {{
         "title": "string",
@@ -218,10 +220,19 @@ async def generate_reddit_posts(saas_info_id: int, post_id: int, db: Session):
                 
                 # Update the original RedditPost with generated content
                 post_update_schema = schemas.RedditPostUpdate(
+                    title=db_post.title,
+                    content=db_post.content,
+                    score=db_post.score,
+                    num_comments=db_post.num_comments,
+                    author=db_post.author,
+                    url=db_post.url,
+                    subreddit=db_post.subreddit,
                     generated_title=generated_post_content_obj.title,
-                    generated_content=generated_post_content_obj.content
+                    generated_content=generated_post_content_obj.content,
+                    ai_generated=True # Mark as AI generated
                 )
                 crud.update_reddit_post(db, post_id, post_update_schema)
+                db.commit() # Commit the changes to the database
             except Exception as e:
                 logging.error(f"Error validating or updating generated post: {e} - Raw Data: {raw_generated_data}")
         else:
@@ -247,6 +258,10 @@ async def post_generated_reddit_post(post_id: int, db: Session):
     if not db_post.generated_title or not db_post.generated_content:
         logging.error(f"Post ID {post_id} does not have generated content to post.")
         return
+    
+    if not db_post.ai_generated:
+        logging.warning(f"Post ID {post_id} is not marked as AI-generated. Skipping posting.")
+        return
 
     # For now, we'll post to a hardcoded subreddit for testing.
     # In a real scenario, you might select a subreddit based on lead data or user input.
@@ -254,13 +269,30 @@ async def post_generated_reddit_post(post_id: int, db: Session):
 
     try:
         subreddit = reddit.subreddit(target_subreddit)
-        subreddit.submit(db_post.generated_title, selftext=db_post.generated_content)
+        submission = subreddit.submit(db_post.generated_title, selftext=db_post.generated_content)
         
+        # Add a small delay after posting to avoid rate limiting issues
+        time.sleep(5) # Wait for 5 seconds
+
         # Update the post status in the database
-        post_update_schema = schemas.RedditPostUpdate(is_posted=True)
+        post_update_schema = schemas.RedditPostUpdate(
+            title=db_post.title,
+            content=db_post.content,
+            score=db_post.score,
+            num_comments=db_post.num_comments,
+            author=db_post.author,
+            url=db_post.url,
+            subreddit=db_post.subreddit,
+            generated_title=db_post.generated_title,
+            generated_content=db_post.generated_content,
+            is_posted=True,
+            ai_generated=db_post.ai_generated # Preserve the ai_generated flag
+        )
         crud.update_reddit_post(db, post_id, post_update_schema)
+        db.commit() # Commit the changes to the database
         
-        logging.info(f"Successfully posted to r/{target_subreddit}: '{db_post.generated_title}'")
+        logging.info(f"Successfully posted to r/{target_subreddit}: '{db_post.generated_title}' (Submission ID: {submission.id})")
+        # You can also check submission.mod.removed here if needed for debugging
     except Exception as e:
         logging.error(f"Failed to post to r/{target_subreddit} for Post ID {post_id}: {e}")
     finally:
