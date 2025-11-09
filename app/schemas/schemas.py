@@ -103,6 +103,15 @@ class RedditPost(RedditPostBase):
     class Config:
         from_attributes = True
 
+# Scored Reddit Post List Schema for DocumentScraperGraph
+class ScoredRedditPostList(BaseModel):
+    posts: List[RedditPostUpdate]
+
+# Generated Post Content Schema for AI generation
+class GeneratedPostContent(BaseModel):
+    title: str
+    content: str
+
 # Lead Schemas
 class LeadBase(BaseModel):
     competitor_name: str

@@ -87,8 +87,8 @@ async def perform_reddit_analysis(saas_info_id: int, lead_id: int, subreddit_nam
     Consider the SaaS product's name, one_liner, features (name and description), and target segments.
     For each identified lead, provide a 'lead_score' (a numerical value indicating the strength of the match) and a 'score_justification' (a brief explanation of why it's a good lead, referencing specific SaaS features or target segments and post content).
     Order the leads by 'lead_score' in descending order.
-    The output MUST strictly conform to the JSON schema for a list of ScoredRedditPost objects, where each object includes all original fields of the Reddit post plus "lead_score" (float) and "score_justification" (string).
-    If no relevant leads are found, return an empty list.
+    The output MUST strictly conform to the JSON schema for a JSON object with a key "posts" containing a list of ScoredRedditPost objects, where each object includes all original fields of the Reddit post plus "lead_score" (float) and "score_justification" (string).
+    If no relevant leads are found, return an empty list for the "posts" key.
     """
 
     graph_config = {
@@ -106,26 +106,37 @@ async def perform_reddit_analysis(saas_info_id: int, lead_id: int, subreddit_nam
     document_scraper_graph = DocumentScraperGraph(
         prompt=prompt,
         source=source_content,
-        schema=List[schemas.RedditPostUpdate], # Expecting a list of updates
+        schema=schemas.ScoredRedditPostList, # Expecting a ScoredRedditPostList object
         config=graph_config,
     )
 
     try:
-        analysis_results = document_scraper_graph.run()
+        analysis_results_obj = document_scraper_graph.run()
         logging.info(f"Reddit lead analysis completed for Lead ID: {lead_id}")
 
-        if isinstance(analysis_results, list):
-            for scored_post_data in analysis_results:
+        if isinstance(analysis_results_obj, schemas.ScoredRedditPostList):
+            for scored_post_data in analysis_results_obj.posts:
                 try:
                     # Find the corresponding post in the database and update it
-                    original_post_url = scored_post_data.get("url")
+                    original_post_url = scored_post_data.url
                     if original_post_url:
                         db_post = db.query(models.RedditPost).filter(
                             models.RedditPost.lead_id == lead_id,
                             models.RedditPost.url == original_post_url
                         ).first()
                         if db_post:
-                            post_update_schema = schemas.RedditPostUpdate(**scored_post_data)
+                            # Create RedditPostUpdate schema from the scored_post_data
+                            post_update_schema = schemas.RedditPostUpdate(
+                                title=scored_post_data.title,
+                                content=scored_post_data.content,
+                                score=scored_post_data.score,
+                                num_comments=scored_post_data.num_comments,
+                                author=scored_post_data.author,
+                                url=scored_post_data.url,
+                                subreddit=scored_post_data.subreddit,
+                                lead_score=scored_post_data.lead_score,
+                                score_justification=scored_post_data.score_justification
+                            )
                             crud.update_reddit_post(db, db_post.id, post_update_schema)
                         else:
                             logging.warning(f"Original post with URL {original_post_url} not found for update.")
@@ -134,7 +145,7 @@ async def perform_reddit_analysis(saas_info_id: int, lead_id: int, subreddit_nam
                 except Exception as e:
                     logging.error(f"Error processing analyzed Reddit post: {e} - Data: {scored_post_data}")
         else:
-            logging.error(f"Unexpected format from DocumentScraperGraph.run() for analysis: {analysis_results}")
+            logging.error(f"Unexpected format from DocumentScraperGraph.run() for analysis: {analysis_results_obj}")
 
     except Exception as e:
         logging.error(f"Error during Reddit lead analysis for Lead ID {lead_id}: {e}")
@@ -170,7 +181,11 @@ async def generate_reddit_posts(saas_info_id: int, post_id: int, db: Session):
     The new post should be written in a human-like, friendly, and youthful tone, suitable for Reddit. It should not sound like a generic AI.
     The post should address the core problem or topic of the original post, but from a new perspective.
     Subtly hint at a solution related to the '{saas_info_db.name}' SaaS product without being an obvious advertisement.
-    The output MUST strictly conform to the JSON schema for a GeneratedPost object, with 'title' and 'content' fields.
+    The output MUST strictly conform to the JSON schema for a GeneratedPostContent object.
+    {{
+        "title": "string",
+        "content": "string"
+    }}
     """
 
     graph_config = {
@@ -188,26 +203,29 @@ async def generate_reddit_posts(saas_info_id: int, post_id: int, db: Session):
     document_scraper_graph = DocumentScraperGraph(
         prompt=prompt,
         source=source_content,
-        schema=schemas.RedditPostUpdate, # Expecting an update for generated_title and generated_content
+        schema=schemas.GeneratedPostContent, # Expecting a GeneratedPostContent object
         config=graph_config,
     )
 
     try:
-        generated_post_data = document_scraper_graph.run()
+        raw_generated_data = document_scraper_graph.run()
         logging.info(f"Reddit post generation completed for Post ID: {post_id}")
 
-        if generated_post_data:
+        if raw_generated_data:
             try:
+                # Explicitly validate the raw dictionary against the Pydantic schema
+                generated_post_content_obj = schemas.GeneratedPostContent(**raw_generated_data)
+                
                 # Update the original RedditPost with generated content
                 post_update_schema = schemas.RedditPostUpdate(
-                    generated_title=generated_post_data.get("title"),
-                    generated_content=generated_post_data.get("content")
+                    generated_title=generated_post_content_obj.title,
+                    generated_content=generated_post_content_obj.content
                 )
                 crud.update_reddit_post(db, post_id, post_update_schema)
             except Exception as e:
-                logging.error(f"Error validating or updating generated post: {e} - Data: {generated_post_data}")
+                logging.error(f"Error validating or updating generated post: {e} - Raw Data: {raw_generated_data}")
         else:
-            logging.error(f"No content generated for Post ID {post_id}.")
+            logging.error(f"AI failed to generate content for Post ID {post_id}. Raw output was empty or None.")
 
     except Exception as e:
         logging.error(f"Error during Reddit post generation for Post ID {post_id}: {e}")
