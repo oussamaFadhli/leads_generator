@@ -81,4 +81,5 @@ class RedditPost(Base):
     generated_content = Column(Text, nullable=True)
     is_posted = Column(Boolean, default=False)
     ai_generated = Column(Boolean, default=False)
+    posted_url = Column(String, nullable=True)
     lead_id = Column(Integer, ForeignKey("leads.id"))

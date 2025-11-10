@@ -91,6 +91,7 @@ class RedditPostUpdate(RedditPostBase):
     generated_content: Optional[str] = None
     is_posted: Optional[bool] = False
     ai_generated: Optional[bool] = False
+    posted_url: Optional[str] = None
 
 class RedditPost(RedditPostBase):
     id: int
@@ -99,6 +100,7 @@ class RedditPost(RedditPostBase):
     score_justification: Optional[str] = None
     generated_title: Optional[str] = None
     generated_content: Optional[str] = None
+    posted_url: Optional[str] = None
     is_posted: bool = False
     ai_generated: bool = False
 
