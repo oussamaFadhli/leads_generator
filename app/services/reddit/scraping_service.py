@@ -38,3 +38,29 @@ async def fetch_reddit_posts(reddit: praw.Reddit, subreddit_name: str, limit: in
     except Exception as e:
         logging.error(f"Could not fetch posts from r/{subreddit_name}. Reason: {e}")
     return posts_data
+
+async def fetch_comments_from_post_url(reddit: praw.Reddit, post_url: str) -> List[schemas.RedditCommentCreate]:
+    """Fetches top-level comments from a specified Reddit post URL."""
+    comments_data = []
+    try:
+        submission = reddit.submission(url=post_url)
+        submission.comments.replace_more(limit=0) # Flatten comment tree, limit=0 means only top-level
+        
+        time.sleep(random.uniform(2, 5))
+
+        for comment in submission.comments.list():
+            if comment.author and comment.body: # Ensure comment has an author and content
+                comments_data.append(
+                    schemas.RedditCommentCreate(
+                        comment_id=comment.id,
+                        post_id=submission.id,
+                        author=str(comment.author),
+                        content=comment.body,
+                        score=comment.score,
+                        permalink=comment.permalink
+                    )
+                )
+        logging.info(f"Successfully fetched {len(comments_data)} top-level comments from {post_url}")
+    except Exception as e:
+        logging.error(f"Could not fetch comments from {post_url}. Reason: {e}")
+    return comments_data

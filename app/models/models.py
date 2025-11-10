@@ -92,3 +92,19 @@ class RedditPost(Base):
             except json.JSONDecodeError:
                 return [] # Return empty list on decode error
         return [] # Return empty list if subreddits is None or empty
+
+class RedditComment(Base):
+    __tablename__ = "reddit_comments"
+    id = Column(Integer, primary_key=True, index=True)
+    comment_id = Column(String, index=True)
+    post_id = Column(String) # The Reddit ID of the post this comment belongs to
+    author = Column(String)
+    content = Column(Text)
+    score = Column(Integer)
+    permalink = Column(String)
+    reddit_post_db_id = Column(Integer, ForeignKey("reddit_posts.id")) # Our internal RedditPost ID
+    generated_reply_content = Column(Text, nullable=True)
+    is_replied = Column(Boolean, default=False)
+    ai_generated = Column(Boolean, default=False)
+
+    reddit_post = relationship("RedditPost", backref="comments")

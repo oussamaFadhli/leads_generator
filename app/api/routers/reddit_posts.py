@@ -8,12 +8,20 @@ from app.core.database import get_db
 from app.services.reddit_service import (
     perform_reddit_analysis, 
     generate_reddit_posts, 
-    post_generated_reddit_post
+    post_generated_reddit_post,
+    reply_to_reddit_post_comments # Import the new service function
 )
 
 router = APIRouter(
     prefix="/saas-info/{saas_info_id}/leads/{lead_id}/reddit-posts",
     tags=["Reddit Posts"],
+    responses={404: {"description": "Not found"}},
+)
+
+# New router for comment replies, not tied to a specific lead_id in the path
+comments_router = APIRouter(
+    prefix="/saas-info/{saas_info_id}/reddit-comments",
+    tags=["Reddit Comments"],
     responses={404: {"description": "Not found"}},
 )
 
@@ -87,6 +95,20 @@ def delete_reddit_post_endpoint(
     if db_post is None or db_post.lead_id != lead_id:
         raise HTTPException(status_code=404, detail="Reddit Post not found for this Lead")
     return crud.delete_reddit_post(db=db, post_id=post_id)
+
+@comments_router.post("/reply-to-comments", status_code=202)
+async def trigger_reply_to_comments_endpoint(
+    saas_info_id: int,
+    reddit_post_url: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    db_saas_info = crud.get_saas_info(db, saas_info_id=saas_info_id)
+    if db_saas_info is None:
+        raise HTTPException(status_code=404, detail="SaaS Info not found")
+    
+    background_tasks.add_task(reply_to_reddit_post_comments, saas_info_id, reddit_post_url, db)
+    return {"message": f"Initiated AI-powered replies to comments for Reddit post: {reddit_post_url}."}
 
 @router.post("/analyze/{subreddit_name}", status_code=202)
 async def trigger_reddit_analysis_endpoint(

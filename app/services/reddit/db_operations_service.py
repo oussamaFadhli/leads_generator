@@ -96,3 +96,60 @@ def get_most_recent_posted_post(db: Session):
     return db.query(models.RedditPost).filter(
         models.RedditPost.is_posted == True
     ).order_by(models.RedditPost.id.desc()).first()
+
+def save_reddit_comments(db: Session, reddit_post_db_id: int, comments: List[schemas.RedditCommentCreate]):
+    """Saves fetched Reddit comments to the database."""
+    saved_count = 0
+    for comment_data in comments:
+        try:
+            db_comment = db.query(models.RedditComment).filter(
+                models.RedditComment.reddit_post_db_id == reddit_post_db_id,
+                models.RedditComment.comment_id == comment_data.comment_id
+            ).first()
+
+            if not db_comment:
+                new_comment = models.RedditComment(
+                    comment_id=comment_data.comment_id,
+                    post_id=comment_data.post_id,
+                    author=comment_data.author,
+                    content=comment_data.content,
+                    score=comment_data.score,
+                    permalink=comment_data.permalink,
+                    reddit_post_db_id=reddit_post_db_id
+                )
+                db.add(new_comment)
+                saved_count += 1
+            else:
+                logging.debug(f"Skipping duplicate comment: {comment_data.comment_id} (Author: {comment_data.author})")
+        except Exception as e:
+            logging.error(f"Error saving Reddit comment: {e} - Data: {comment_data}")
+    db.commit()
+    logging.info(f"Successfully saved {saved_count} Reddit comments for Reddit Post DB ID {reddit_post_db_id}.")
+
+def get_reddit_comments_for_post(db: Session, reddit_post_db_id: int) -> List[models.RedditComment]:
+    """Retrieves all comments for a given internal Reddit Post ID."""
+    return db.query(models.RedditComment).filter(
+        models.RedditComment.reddit_post_db_id == reddit_post_db_id
+    ).all()
+
+def mark_comment_as_replied(db: Session, reddit_comment_db_id: int, reply_permalink: str, generated_reply_content: str):
+    """
+    Marks a RedditComment as replied, stores the generated reply content and its permalink.
+    """
+    db_comment = db.query(models.RedditComment).filter(
+        models.RedditComment.id == reddit_comment_db_id
+    ).first()
+
+    if not db_comment:
+        logging.error(f"Reddit Comment with DB ID {reddit_comment_db_id} not found for marking as replied.")
+        return
+
+    db_comment.is_replied = True
+    db_comment.ai_generated = True
+    db_comment.generated_reply_content = generated_reply_content
+    db_comment.permalink = reply_permalink # Update permalink to the reply's permalink
+
+    db.add(db_comment)
+    db.commit()
+    db.refresh(db_comment)
+    logging.info(f"Reddit Comment DB ID {reddit_comment_db_id} marked as replied.")

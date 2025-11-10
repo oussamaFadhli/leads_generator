@@ -39,7 +39,40 @@ async def post_generated_reddit_post(post_id: int, db: Session):
         logging.warning(f"Post ID {post_id} is already marked as posted. Skipping duplicate post.")
         return
     
-    target_subreddits = db_post.subreddits_list if db_post.subreddits_list else []
+    # If a posted_url already exists, consider the post as already made and update is_posted if necessary
+    if db_post.posted_url and not db_post.is_posted:
+        logging.info(f"Post ID {post_id} has an existing posted_url: {db_post.posted_url}. Marking as posted.")
+        post_update_schema = schemas.RedditPostUpdate(
+            title=db_post.title,
+            content=db_post.content,
+            score=db_post.score,
+            num_comments=db_post.num_comments,
+            author=db_post.author,
+            url=db_post.url,
+            generated_title=db_post.generated_title,
+            generated_content=db_post.generated_content,
+            is_posted=True,
+            ai_generated=db_post.ai_generated,
+            posted_url=db_post.posted_url
+        )
+        # Use a dummy subreddit or the first one if available, as mark_subreddit_as_posted requires it.
+        # This is a workaround since the post is already considered posted via posted_url.
+        dummy_subreddit = "N/A" 
+        if db_post.subreddits_list:
+            dummy_subreddit = db_post.subreddits_list[0]
+        
+        db_operations_service.mark_subreddit_as_posted(db, post_id, dummy_subreddit, post_update_schema)
+        logging.info(f"Post ID {post_id} updated to is_posted=True based on existing posted_url.")
+        return # Abort further posting attempts as it's already considered posted
+
+    # Define test subreddits for development/testing purposes
+    TEST_SUBREDDITS = ["testingground4bots"]
+    
+    # Use test subreddits if in a testing environment, otherwise use subreddits from the database
+    # For now, we will always use the test subreddits as per the task request.
+    # In a production environment, this logic would be conditional (e.g., based on an environment variable).
+    target_subreddits = TEST_SUBREDDITS 
+    
     if not target_subreddits:
         logging.warning(f"Post ID {post_id} has no target subreddits defined. Skipping posting.")
         return
@@ -119,3 +152,32 @@ async def post_generated_reddit_post(post_id: int, db: Session):
         logging.warning(f"Post ID {post_id} was not successfully posted to any target subreddit.")
     
     db.close()
+
+async def post_reddit_comment_reply(
+    reddit: praw.Reddit, 
+    parent_comment_id: str, 
+    reply_content: str, 
+    db: Session, 
+    reddit_comment_db_id: int
+):
+    """
+    Posts a reply to a specific Reddit comment.
+    """
+    logging.info(f"Attempting to post reply to Reddit comment ID: {parent_comment_id}")
+    
+    try:
+        parent_comment = reddit.comment(id=parent_comment_id)
+        
+        time.sleep(random.uniform(5, 15)) # Anti-spam delay
+        
+        reply = parent_comment.reply(reply_content)
+        logging.info(f"Successfully posted reply to comment ID {parent_comment_id}. Reply ID: {reply.id}")
+        
+        # Update the database to mark the comment as replied
+        db_operations_service.mark_comment_as_replied(db, reddit_comment_db_id, reply.permalink)
+        return True
+    except Exception as e:
+        logging.error(f"Failed to post reply to comment ID {parent_comment_id}. Reason: {e}")
+        return False
+    finally:
+        db.close()

@@ -112,3 +112,88 @@ async def generate_reddit_posts(saas_info_id: int, post_id: int, db: Session):
         logging.error(f"Error during Reddit post generation for Post ID {post_id}: {e}")
     finally:
         db.close()
+
+async def generate_reddit_comment_reply(saas_info_id: int, original_comment_content: str, db: Session):
+    logging.info(f"Starting Reddit comment reply generation for SaaS Info ID: {saas_info_id}")
+    saas_info_db = crud.get_saas_info(db, saas_info_id)
+    if not saas_info_db:
+        logging.error(f"SaaS Info with ID {saas_info_id} not found.")
+        return
+
+    saas_info_dict = {
+        "name": saas_info_db.name,
+        "one_liner": saas_info_db.one_liner,
+        "features": [{"name": f.name, "desc": f.description} for f in saas_info_db.features],
+        "target_segments": saas_info_db.target_segments
+    }
+
+    source_content = f"SaaS Information:\n{json.dumps(saas_info_dict, indent=2)}\n\nOriginal Reddit Comment:\n{original_comment_content}"
+
+    prompt = f"""
+    Based on the provided SaaS information and the original Reddit comment, generate a new Reddit reply.
+    
+    CRITICAL ANTI-SPAM REQUIREMENTS:
+    1. Write in a genuine, conversational tone - like a real person sharing their experience
+    2. DO NOT mention the product name directly - instead describe a "tool" or "service" you found helpful
+    3. DO NOT include any links or URLs
+    4. DO NOT use marketing language like "check out", "amazing", "revolutionary", etc.
+    5. Focus on sharing personal experience or asking for advice
+    6. Include natural imperfections: casual language, contractions, maybe a typo
+    7. Make it about the problem first, solution second
+    8. Keep it relatively short (1-3 paragraphs max)
+    9. Use Reddit-style formatting sparingly (not too perfect)
+    
+    The reply should:
+    - Address the core problem or question mentioned in the original comment
+    - Share a relatable personal experience or question
+    - Subtly reference that you found something helpful (without naming it directly)
+    - Try to give a solution if the SaaS info can really help the user
+    - Feel authentic and human
+    
+    Example good style: "I totally get what you're saying. I was in a similar spot a while back trying to manage [problem]. What really helped me was finding a service that automates a lot of that. It's made a huge difference for my workflow. Have you looked into anything like that?"
+    
+    Example bad style (TOO PROMOTIONAL): "You should definitely check out [Product]! It's amazing and has all these features. Here's a link!"
+    
+    The output MUST strictly conform to the JSON schema for a GeneratedCommentContent object.
+    {{
+        "content": "string"
+    }}
+    """
+
+    graph_config = {
+        "llm": {
+            "api_key": settings.NVIDIA_KEY,
+            "model": "nvidia/mistralai/mistral-nemotron",
+            "temperature": 0.8,
+            "format": "json",
+            "model_tokens": 4000,
+        },
+        "verbose": True,
+        "headless": False,
+    }
+
+    document_scraper_graph = DocumentScraperGraph(
+        prompt=prompt,
+        source=source_content,
+        schema=schemas.GeneratedCommentContent,
+        config=graph_config,
+    )
+
+    try:
+        raw_generated_data = document_scraper_graph.run()
+        logging.info(f"Reddit comment reply generation completed for SaaS Info ID: {saas_info_id}")
+
+        if raw_generated_data:
+            try:
+                generated_comment_content_obj = schemas.GeneratedCommentContent(**raw_generated_data)
+                return generated_comment_content_obj.content
+            except Exception as e:
+                logging.error(f"Error validating generated comment reply: {e} - Raw Data: {raw_generated_data}")
+        else:
+            logging.error(f"AI failed to generate content for SaaS Info ID {saas_info_id}. Raw output was empty or None.")
+
+    except Exception as e:
+        logging.error(f"Error during Reddit comment reply generation for SaaS Info ID {saas_info_id}: {e}")
+    finally:
+        db.close()
+    return None

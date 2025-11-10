@@ -15,6 +15,7 @@ app = FastAPI(
 app.include_router(saas_info.router)
 app.include_router(leads.router)
 app.include_router(reddit_posts.router)
+app.include_router(reddit_posts.comments_router) # Include the new comments router
 
 @app.get("/")
 async def root():

@@ -132,6 +132,32 @@ class GeneratedPostContent(BaseModel):
     title: str
     content: str
 
+# Reddit Comment Schemas
+class RedditCommentBase(BaseModel):
+    comment_id: str
+    post_id: str
+    author: str
+    content: str
+    score: int
+    permalink: str
+
+class RedditCommentCreate(RedditCommentBase):
+    pass
+
+class RedditComment(RedditCommentBase):
+    id: int # Internal DB ID
+    reddit_post_db_id: int # Foreign key to our internal RedditPost model
+    generated_reply_content: Optional[str] = None
+    is_replied: bool = False
+    ai_generated: bool = False
+
+    class Config:
+        from_attributes = True
+
+# Generated Comment Content Schema for AI generation
+class GeneratedCommentContent(BaseModel):
+    content: str
+
 # Lead Schemas
 class LeadBase(BaseModel):
     competitor_name: str
