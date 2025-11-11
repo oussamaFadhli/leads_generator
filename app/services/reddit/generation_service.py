@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Optional
 from scrapegraphai.graphs import DocumentScraperGraph
 from app.core.config import settings
 from app.schemas import schemas
@@ -107,7 +108,7 @@ async def generate_reddit_posts(saas_info_id: int, post_id: int, command_bus: Co
     except Exception as e:
         logging.error(f"Error during Reddit post generation for Post ID {post_id}: {e}")
 
-async def generate_reddit_comment_reply(saas_info_id: int, original_comment_content: str, command_bus: CommandBus, query_bus: QueryBus):
+async def generate_reddit_comment_reply(saas_info_id: int, original_comment_content: str, command_bus: CommandBus, query_bus: QueryBus) -> Optional[str]:
     logging.info(f"Starting Reddit comment reply generation for SaaS Info ID: {saas_info_id}")
     saas_info_db = await query_bus.dispatch(GetSaaSInfoByIdQuery(saas_info_id=saas_info_id))
     if not saas_info_db:
@@ -126,25 +127,28 @@ async def generate_reddit_comment_reply(saas_info_id: int, original_comment_cont
     prompt = f"""
     Based on the provided SaaS information and the original Reddit comment, generate a new Reddit reply.
     
+    Tone: Sales Manager, Human, Empathetic, Problem-Solving. The goal is to genuinely help the user by subtly introducing a relevant solution (our SaaS) without being overtly promotional.
+    
     CRITICAL ANTI-SPAM REQUIREMENTS:
-    1. Write in a genuine, conversational tone - like a real person sharing their experience
-    2. DO NOT mention the product name directly - instead describe a "tool" or "service" you found helpful
-    3. DO NOT include any links or URLs
-    4. DO NOT use marketing language like "check out", "amazing", "revolutionary", etc.
-    5. Focus on sharing personal experience or asking for advice
-    6. Include natural imperfections: casual language, contractions, maybe a typo
-    7. Make it about the problem first, solution second
-    8. Keep it relatively short (1-3 paragraphs max)
-    9. Use Reddit-style formatting sparingly (not too perfect)
+    1. Write in a genuine, conversational tone - like a real person sharing their experience or offering advice.
+    2. DO NOT mention the product name directly - instead describe a "tool," "service," "platform," or "approach" you found helpful.
+    3. DO NOT include any links or URLs.
+    4. DO NOT use aggressive marketing language like "check out," "amazing," "revolutionary," "boost your productivity," "transform your business," etc.
+    5. Focus on addressing the user's pain point, sharing a relatable experience, or asking clarifying questions to understand their need better.
+    6. Include natural imperfections: casual language, contractions, maybe a slight conversational pause.
+    7. Make it about the problem first, solution second. Frame the solution as a helpful discovery or a potential path forward.
+    8. Keep it concise and valuable (1-3 paragraphs max).
+    9. Use Reddit-style formatting sparingly (e.g., bold for emphasis, but not overly structured).
     
     The reply should:
-    - Address the core problem or question mentioned in the original comment
-    - Share a relatable personal experience or question
-    - Subtly reference that you found something helpful (without naming it directly)
-    - Try to give a solution if the SaaS info can really help the user
-    - Feel authentic and human
+    - Acknowledge and empathize with the core problem or question mentioned in the original comment.
+    - Share a brief, relatable personal experience or observation that aligns with the user's struggle.
+    - Subtly introduce the concept of a helpful solution (our SaaS's core value proposition) without naming it directly. Frame it as a general category of tool or service.
+    - Gently guide the user towards considering a solution that matches their need, based on the SaaS information provided.
+    - Maintain a helpful, advisory, and authentic human tone, as if a sales manager is genuinely trying to assist, not just sell.
+    - Feel authentic and human, like a seasoned professional offering a tip.
     
-    Example good style: "I totally get what you're saying. I was in a similar spot a while back trying to manage [problem]. What really helped me was finding a service that automates a lot of that. It's made a huge difference for my workflow. Have you looked into anything like that?"
+    Example good style: "I totally get what you're saying about [user's problem]. It's a common hurdle, and I've seen many teams struggle with that exact challenge. What often helps is having a system that can [SaaS core benefit, e.g., 'automate those repetitive tasks' or 'centralize all your data for better insights']. It really streamlines things and frees up time for more strategic work. Have you explored solutions that offer that kind of capability?"
     
     Example bad style (TOO PROMOTIONAL): "You should definitely check out [Product]! It's amazing and has all these features. Here's a link!"
     
@@ -154,6 +158,8 @@ async def generate_reddit_comment_reply(saas_info_id: int, original_comment_cont
     }}
     """
 
+    # The AI agent model for comment reply generation is configured within this graph_config dictionary.
+    # Specifically, the 'model' key under 'llm' specifies the AI model to be used.
     graph_config = {
         "llm": {
             "api_key": settings.NVIDIA_KEY,

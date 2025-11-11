@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from app.core.config import settings
 from app.schemas import schemas
 from app.core.cqrs import CommandBus, QueryBus
@@ -11,8 +11,11 @@ from app.commands.reddit_comment_commands import CreateRedditCommentCommand, Upd
 from app.queries.saas_info_queries import GetSaaSInfoByIdQuery
 from app.queries.lead_queries import GetLeadByIdQuery, ListLeadsQuery
 from app.queries.reddit_post_queries import GetRedditPostByIdQuery, GetRedditPostByTitleQuery, ListRedditPostsQuery
-from app.queries.reddit_comment_queries import GetRedditCommentByIdQuery, ListRedditCommentsQuery
+from app.queries.reddit_comment_queries import GetRedditCommentByCommentIdQuery, GetRedditCommentByIdQuery, ListRedditCommentsQuery
 from app.services.reddit import auth_service, account_service, scraping_service, generation_service, posting_service, preview_service
+
+if TYPE_CHECKING:
+    from app.services.reddit import generation_service as GenerationServiceModule
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -118,6 +121,7 @@ async def _reply_to_reddit_post_comments(
     reddit_post_url: str,
     command_bus: CommandBus,
     query_bus: QueryBus,
+    generation_service: "GenerationServiceModule" = generation_service, # Explicitly pass and type the module
 ):
     logging.info(f"Starting process to reply to comments for Reddit post URL: {reddit_post_url}")
     reddit = auth_service.get_reddit_instance()
@@ -179,11 +183,11 @@ async def _reply_to_reddit_post_comments(
         logging.warning(f"No comments fetched from {reddit_post_url}. Aborting comment reply process.")
         return
 
-        for comment_data in fetched_comments:
-            existing_comment = await query_bus.dispatch(GetRedditCommentByIdQuery(comment_id=comment_data.comment_id))
-            if not existing_comment:
-                create_comment_command = CreateRedditCommentCommand(
-                    comment_id=comment_data.comment_id,
+    for comment_data in fetched_comments:
+        existing_comment = await query_bus.dispatch(GetRedditCommentByCommentIdQuery(comment_id=comment_data.comment_id))
+        if not existing_comment:
+            create_comment_command = CreateRedditCommentCommand(
+                comment_id=comment_data.comment_id,
                 post_id=comment_data.post_id,
                 author=comment_data.author,
                 content=comment_data.content,
